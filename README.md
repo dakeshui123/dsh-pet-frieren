@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>dsh-pet-frieren</h1>
+<h1>Frieren桌宠</h1>
 
 <p>A chibi <b>Frieren</b> desktop pet for the <b>DeepSeek Harness Web GUI</b>
 (<code>dsh --profile web</code>).</p>
