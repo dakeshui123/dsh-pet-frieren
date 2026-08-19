@@ -188,35 +188,63 @@ function resetEnv() {
 }
 
 /* ══ Task 1 tests: deriveAgentAnim ══════════════════════════════════════════ */
+const SNAP_IDLE = { runningCalls: [], partial: null, running: false };
+const SNAP_RUN = { runningCalls: [], partial: null, running: true };
+
 test("deriveAgentAnim: no item, no snapshot → idle", () => {
 	const plugin = loadPlugin();
-	assert.equal(plugin.deriveAgentAnim(undefined, undefined).name, "idle");
+	const anim = plugin.deriveAgentAnim(undefined, undefined);
+	assert.equal(anim.name, "idle");
+	assert.equal(anim.key, "idle");
 });
-test("deriveAgentAnim: running item → running", () => {
+test("deriveAgentAnim: running without tool calls or output → thinking (waiting)", () => {
 	const plugin = loadPlugin();
-	assert.equal(plugin.deriveAgentAnim({ running: true }, undefined).name, "running");
+	const anim = plugin.deriveAgentAnim({ running: true }, SNAP_RUN);
+	assert.equal(anim.name, "waiting");
+	assert.equal(anim.key, "thinking");
 });
-test("deriveAgentAnim: pendingInteraction approval → waiting", () => {
+test("deriveAgentAnim: active tool calls → exec (review)", () => {
 	const plugin = loadPlugin();
-	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "approval" }, undefined).name, "waiting");
-	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "question" }, undefined).name, "waiting");
-	assert.equal(plugin.deriveAgentAnim({ running: false, pendingInteraction: "approval" }, undefined).name, "waiting");
-	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "mystery" }, undefined).name, "running");
+	const anim = plugin.deriveAgentAnim({ running: true }, { ...SNAP_RUN, runningCalls: [{ id: "c1" }] });
+	assert.equal(anim.name, "review");
+	assert.equal(anim.key, "exec");
+});
+test("deriveAgentAnim: streaming partial → output (running)", () => {
+	const plugin = loadPlugin();
+	const anim = plugin.deriveAgentAnim({ running: true }, { ...SNAP_RUN, partial: { blocks: [] } });
+	assert.equal(anim.name, "running");
+	assert.equal(anim.key, "output");
+});
+test("deriveAgentAnim: pendingInteraction approval/question → waiting, beats tool calls", () => {
+	const plugin = loadPlugin();
+	const busy = { ...SNAP_RUN, runningCalls: [{ id: "c1" }] };
+	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "approval" }, busy).key, "approval");
+	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "question" }, busy).key, "question");
+	assert.equal(plugin.deriveAgentAnim({ running: false, pendingInteraction: "approval" }, SNAP_IDLE).name, "waiting");
 });
 test("deriveAgentAnim: pendingInteraction plan-review → review", () => {
 	const plugin = loadPlugin();
-	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "plan-review" }, undefined).name, "review");
+	const anim = plugin.deriveAgentAnim({ running: true, pendingInteraction: "plan-review" }, SNAP_RUN);
+	assert.equal(anim.name, "review");
+	assert.equal(anim.key, "planReview");
 });
 test("deriveAgentAnim: lastAgentError beats everything → failed, hold", () => {
 	const plugin = loadPlugin();
-	const anim = plugin.deriveAgentAnim({ running: true, pendingInteraction: "approval" }, { lastAgentError: "boom" });
+	const anim = plugin.deriveAgentAnim({ running: true, pendingInteraction: "approval" }, { ...SNAP_RUN, lastAgentError: "boom" });
 	assert.equal(anim.name, "failed");
 	assert.equal(anim.once, true);
 	assert.equal(anim.hold, true);
+	assert.equal(anim.key, "error");
 });
 test("deriveAgentAnim: idle item → idle", () => {
 	const plugin = loadPlugin();
-	assert.equal(plugin.deriveAgentAnim({ running: false }, undefined).name, "idle");
+	const anim = plugin.deriveAgentAnim({ running: false }, SNAP_IDLE);
+	assert.equal(anim.name, "idle");
+});
+test("deriveAgentAnim: unknown pendingInteraction falls through to in-turn phases", () => {
+	const plugin = loadPlugin();
+	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "mystery" }, { ...SNAP_RUN, runningCalls: [{ id: "c1" }] }).key, "exec");
+	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "mystery" }, SNAP_RUN).key, "thinking");
 });
 
 /* ══ Task 2 tests: sessions-driven state machine ════════════════════════════ */
@@ -244,14 +272,25 @@ test("mount with no session → idle row 0", () => {
 	elapse(120);
 	assert.equal(spriteRow(sprite).row, ROW.idle);
 });
-test("agent running → row 7 loop; back to idle when stopped", () => {
+test("in-turn phases: thinking → waiting, tool calls → review, output → running, stop → idle", () => {
 	resetEnv();
 	const sessions = makeSessions();
+	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [], partial: null });
+	sessions.bind("s1", session);
 	const { sprite } = mountPet(sessions);
 	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running);
-	setCurrent(sessions, "s1", { id: "s1", running: false, blank: false, updatedAt: 2 });
+	assert.equal(spriteRow(sprite).row, ROW.waiting); // thinking
+	session.set({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [{ id: "c1" }], partial: null });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.review); // tool calls executing
+	session.set({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [], partial: { blocks: [] } });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running); // streaming output
+	session.set({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [], partial: null });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.waiting); // back to thinking
+	session.set({ sessionId: "s1", lastAgentError: null, running: false, runningCalls: [], partial: null });
 	elapse(120);
 	assert.equal(spriteRow(sprite).row, ROW.idle);
 });
@@ -269,45 +308,49 @@ test("pendingInteraction approval → waiting; plan-review → review", () => {
 test("lastAgentError → failed: plays once then holds last frame; clears on error reset", () => {
 	resetEnv();
 	const sessions = makeSessions();
-	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: false });
+	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: false, runningCalls: [], partial: null });
 	sessions.bind("s1", session);
 	const { sprite } = mountPet(sessions);
 	setCurrent(sessions, "s1", { id: "s1", running: false, blank: false, updatedAt: 1 });
 	elapse(120);
 	assert.equal(spriteRow(sprite).row, ROW.idle);
-	session.set({ sessionId: "s1", lastAgentError: "boom", running: false });
+	session.set({ sessionId: "s1", lastAgentError: "boom", running: false, runningCalls: [], partial: null });
 	elapse(2000); // failed: 8 frames @ 8fps = 1s total; well past it
 	assert.equal(spriteRow(sprite).row, ROW.failed);
 	assert.equal(spriteRow(sprite).col, 7); // held on last frame
 	elapse(1000);
 	assert.equal(spriteRow(sprite).col, 7); // still held
-	session.set({ sessionId: "s1", lastAgentError: null, running: false });
+	session.set({ sessionId: "s1", lastAgentError: null, running: false, runningCalls: [], partial: null });
 	elapse(120);
 	assert.equal(spriteRow(sprite).row, ROW.idle);
 });
 test("session switch rebinds: pet follows the new current session", () => {
 	resetEnv();
 	const sessions = makeSessions();
+	const session1 = makeStore({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [{ id: "c1" }], partial: null });
+	sessions.bind("s1", session1);
 	const { sprite } = mountPet(sessions);
 	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running);
-	const session2 = makeStore({ sessionId: "s2", lastAgentError: null, running: false });
+	assert.equal(spriteRow(sprite).row, ROW.review);
+	const session2 = makeStore({ sessionId: "s2", lastAgentError: null, running: false, runningCalls: [], partial: null });
 	sessions.bind("s2", session2); // bind BEFORE switching so followCurrent can subscribe
 	setCurrent(sessions, "s2", { id: "s2", running: false, blank: false, updatedAt: 2 });
 	elapse(120);
 	assert.equal(spriteRow(sprite).row, ROW.idle);
-	session2.set({ sessionId: "s2", lastAgentError: "oops", running: false });
+	session2.set({ sessionId: "s2", lastAgentError: "oops", running: false, runningCalls: [], partial: null });
 	elapse(2000);
 	assert.equal(spriteRow(sprite).row, ROW.failed);
 });
 test("click jump is an overlay: resumes agent animation (double-click shape stays valid after the click rework in Task 3)", () => {
 	resetEnv();
 	const sessions = makeSessions();
+	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [{ id: "c1" }], partial: null });
+	sessions.bind("s1", session);
 	const { root, sprite } = mountPet(sessions);
 	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running);
+	assert.equal(spriteRow(sprite).row, ROW.review);
 	// Task 2 intermediate code: each click jumps. Task 3: first click arms the
 	// wave window, the second consumes it as a jump. Either way → jumping.
 	root.dispatch("pointerdown", { clientX: 10, clientY: 10, button: 0, pointerId: 1, preventDefault() {} });
@@ -316,8 +359,8 @@ test("click jump is an overlay: resumes agent animation (double-click shape stay
 	root.dispatch("pointerup", { clientX: 10, clientY: 10, button: 0, pointerId: 1 });
 	elapse(120); // jumping: 5 frames @ 14fps ≈ 357ms; mid-animation
 	assert.equal(spriteRow(sprite).row, ROW.jumping);
-	elapse(600); // past total → resumes running
-	assert.equal(spriteRow(sprite).row, ROW.running);
+	elapse(600); // past total → resumes review
+	assert.equal(spriteRow(sprite).row, ROW.review);
 });
 
 /* ══ Task 3 tests: interactions ═════════════════════════════════════════════ */
@@ -347,10 +390,12 @@ test("single click → wave after 260ms window; double click → jump instead", 
 test("drag left → running-left; drag right → running-right; release resumes agent anim", () => {
 	resetEnv();
 	const sessions = makeSessions();
+	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [{ id: "c1" }], partial: null });
+	sessions.bind("s1", session);
 	const { root, sprite } = mountPet(sessions);
 	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running);
+	assert.equal(spriteRow(sprite).row, ROW.review);
 	root.dispatch("pointerdown", { ...P, clientX: 100, clientY: 100 });
 	root.dispatch("pointermove", { ...P, clientX: 60, clientY: 100 }); // dx < -4
 	elapse(120);
@@ -360,7 +405,7 @@ test("drag left → running-left; drag right → running-right; release resumes 
 	assert.equal(spriteRow(sprite).row, ROW.runningRight);
 	root.dispatch("pointerup", { ...P, clientX: 180, clientY: 100 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running); // back to agent state
+	assert.equal(spriteRow(sprite).row, ROW.review); // back to agent state
 });
 test("close button hides pet and shows badge; badge click restores", () => {
 	resetEnv();
@@ -375,7 +420,8 @@ test("close button hides pet and shows badge; badge click restores", () => {
 	const badge = document.body.children.find((c) => c.id === "dsh-pet-frieren-badge");
 	assert.ok(badge, "badge not mounted");
 	assert.ok(!badge.classList.contains("hidden"), "badge hidden while pet hidden");
-	badge.dispatch("click", {});
+	badge.dispatch("pointerdown", P);
+	badge.dispatch("pointerup", P);
 	assert.ok(!root.classList.contains("hidden"), "pet not restored");
 });
 test("reduce-motion shows a static frame of the current agent state", () => {
@@ -385,7 +431,7 @@ test("reduce-motion shows a static frame of the current agent state", () => {
 	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
 	elapse(120);
 	mql.setMatches(true);
-	assert.equal(spriteRow(sprite).row, ROW.running);
+	assert.equal(spriteRow(sprite).row, ROW.waiting); // thinking (no session snapshot)
 	setCurrent(sessions, "s1", { id: "s1", running: false, blank: false, updatedAt: 2 });
 	assert.equal(spriteRow(sprite).row, ROW.idle); // static frame follows state
 	mql.setMatches(false);
@@ -393,15 +439,77 @@ test("reduce-motion shows a static frame of the current agent state", () => {
 test("pointercancel during drag resumes agent animation", () => {
 	resetEnv();
 	const sessions = makeSessions();
+	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: true, runningCalls: [{ id: "c1" }], partial: null });
+	sessions.bind("s1", session);
 	const { root, sprite } = mountPet(sessions);
 	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running);
+	assert.equal(spriteRow(sprite).row, ROW.review);
 	root.dispatch("pointerdown", { ...P, clientX: 100, clientY: 100 });
 	root.dispatch("pointermove", { ...P, clientX: 60, clientY: 100 });
 	elapse(120);
 	assert.equal(spriteRow(sprite).row, ROW.runningLeft);
 	root.dispatch("pointercancel", { ...P, clientX: 60, clientY: 100 });
 	elapse(120);
-	assert.equal(spriteRow(sprite).row, ROW.running); // resumes, not stuck running-left
+	assert.equal(spriteRow(sprite).row, ROW.review); // resumes, not stuck running-left
+});
+test("state change shows a speech bubble that fades after 3.5s", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { root } = mountPet(sessions);
+	const bubble = root.children.find((c) => c.className === "bubble");
+	assert.ok(bubble, "bubble missing");
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	assert.ok(bubble.classList.contains("show"), "bubble not shown on state change");
+	assert.ok(bubble.textContent.length > 0, "bubble has no text");
+	mock.timers.tick(3600); // > 3500ms fade delay
+	assert.ok(!bubble.classList.contains("show"), "bubble did not fade");
+});
+test("idle chatter bubble appears within the chatter window", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	// Capture lines BEFORE mountPet: loadPlugin re-runs the factory (fresh
+	// module state), and the last-run factory owns the mql listener — it must
+	// be the one that mounts, or stale closures crash on null el/sprite.
+	const lines = loadPlugin().__lines;
+	const { root } = mountPet(sessions);
+	const bubble = root.children.find((c) => c.className === "bubble");
+	let shown = false;
+	for (let t = 0; t <= 95000 && !shown; t += 1000) {
+		mock.timers.tick(1000);
+		elapse(1000); // let rAF-timed overlays finish naturally
+		if (bubble.classList.contains("show") && lines.idle.includes(bubble.textContent)) shown = true;
+	}
+	assert.ok(shown, "no idle chatter bubble within 95s");
+});
+test("no idle chatter under prefers-reduced-motion", () => {
+	resetEnv();
+	mql.setMatches(true);
+	const sessions = makeSessions();
+	const { root } = mountPet(sessions);
+	const bubble = root.children.find((c) => c.className === "bubble");
+	mock.timers.tick(120000);
+	assert.ok(!bubble.classList.contains("show"), "chatter shown under reduced motion");
+	mql.setMatches(false);
+});
+test("badge drag moves the pet's home; badge click restores", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { root } = mountPet(sessions);
+	const close = root.children.find((c) => c.className === "close");
+	close.dispatch("click", {});
+	const badge = document.body.children.find((c) => c.id === "dsh-pet-frieren-badge");
+	const before = JSON.parse(storage.getItem("dsh-pet-frieren:position")) ?? { x: 1088, y: 594 };
+	const expectedX = Math.min(1280 - DISPLAY_W, before.x + 50); // clampLeft
+	const expectedY = Math.min(800 - DISPLAY_H, before.y + 30);  // clampTop
+	badge.dispatch("pointerdown", { ...P, clientX: 50, clientY: 50 });
+	badge.dispatch("pointermove", { ...P, clientX: 100, clientY: 80 });
+	badge.dispatch("pointerup", { ...P, clientX: 100, clientY: 80 });
+	assert.ok(root.classList.contains("hidden"), "drag restored the pet");
+	assert.equal(badge.style.left, expectedX + "px");
+	assert.deepEqual(JSON.parse(storage.getItem("dsh-pet-frieren:position")), { x: expectedX, y: expectedY });
+	badge.dispatch("pointerdown", P);
+	badge.dispatch("pointerup", P);
+	assert.ok(!root.classList.contains("hidden"), "click did not restore");
+	assert.equal(root.style.left, expectedX + "px"); // pet restores where the badge sits
 });

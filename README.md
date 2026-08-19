@@ -46,13 +46,14 @@ dsh --profile web
 
 | Action | Effect |
 | --- | --- |
-| (nothing) | Follows the Agent: idle loop while free; runs while working; waits on approvals/questions; reviews plan-mode plans; collapses on agent errors (holds the last failed frame until the error clears). Switching sessions switches the pet's state with it. |
-| Wait (idle only) | Waves every 12–30 s, occasionally jumps every 45–90 s |
+| (nothing) | Follows the Agent: idle loop while free; thinking while the model reasons; runs while streaming output; executes tool calls; waits on approvals/questions; reviews plan-mode plans; collapses on agent errors (holds the last failed frame until the error clears). Switching sessions switches the pet's state with it. |
+| State change | Says a short line in a speech bubble (fades after ~3.5 s) |
+| Wait (idle only) | Waves every 12–30 s, occasionally jumps every 45–90 s, chats now and then (20–40 s) |
 | Click | Wave once |
 | Double-click | Jump once |
 | Drag | Move the pet (position is remembered); running-left/right while dragged sideways |
 | Hover | A small ✕ appears in the corner — click to hide the pet |
-| Hidden | A small translucent badge stays where the pet was — click to bring it back |
+| Hidden badge | Click to bring the pet back; drag to move the pet's home |
 
 `prefers-reduced-motion` is respected: the pet shows a static frame of the
 current agent state (no auto or click animations, no drag run animation).
@@ -86,14 +87,17 @@ one inject edge: the `sessions` service).
 The pet reflects the Agent's state through the client runtime's `sessions`
 service: the plugin declares `inject: ["sessions"]`, subscribes to
 `sessions.list` (the current session's `running` and `pendingInteraction`),
-and to the current session's live snapshot (`lastAgentError`). The mapping:
+and to the current session's live snapshot (`lastAgentError`, `runningCalls`,
+`partial`). The mapping:
 
 | Agent state | Sprite row |
 | --- | --- |
 | Agent error (`lastAgentError`) | failed (plays once, holds last frame) |
 | Waiting on approval / question | waiting |
 | Plan-mode plan review | review |
-| Running | running |
+| Thinking (running, no tool calls yet) | waiting |
+| Executing tool calls (`runningCalls`) | review |
+| Streaming output (`partial`) | running |
 | Idle (default) | idle |
 
 Assets follow the same host-serves / client-reads pattern the dsh bundles
