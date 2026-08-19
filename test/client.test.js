@@ -390,3 +390,18 @@ test("reduce-motion shows a static frame of the current agent state", () => {
 	assert.equal(spriteRow(sprite).row, ROW.idle); // static frame follows state
 	mql.setMatches(false);
 });
+test("pointercancel during drag resumes agent animation", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { root, sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running);
+	root.dispatch("pointerdown", { ...P, clientX: 100, clientY: 100 });
+	root.dispatch("pointermove", { ...P, clientX: 60, clientY: 100 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.runningLeft);
+	root.dispatch("pointercancel", { ...P, clientX: 60, clientY: 100 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running); // resumes, not stuck running-left
+});
