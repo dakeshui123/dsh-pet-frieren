@@ -1,7 +1,7 @@
 {
   "slug": "frieren",
   "displayName": "芙莉莲 Frieren",
-  "description": "A sticker-style chibi Frieren companion: idles beside your DSH workspace, waves on its own, and jumps when clicked. Ships as both a dsh web plugin (this repo) and a petdex-format pet folder (pet.json + spritesheet.webp at the repo root).",
+  "description": "A sticker-style chibi Frieren companion: idles beside your DSH workspace, follows the Agent's state, waves on its own, and jumps when clicked. Ships as both a dsh web plugin (this repo) and a petdex-format pet folder (pet.json + spritesheet.webp in assets/).",
   "kind": "sticker",
   "spriteVersionNumber": 1,
   "frameWidth": 192,

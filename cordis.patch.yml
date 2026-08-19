@@ -1,9 +1,10 @@
 # dsh-pet-frieren bundle patch: inserts this plugin's own row into the profile
 # layer stack (applied after the profile's existing bundles, addressed by id).
-# The node half (lib/index.js) is an empty apply; the row's presence is what
-# lets the DSH client-modules node half discover this package's `dsh.client`
-# declaration and serve /plugins/dsh-pet-frieren/client.js to the browser,
-# where the client half mounts the pet overlay.
+# The node half (lib/index.js) serves the sprite atlas over HTTP; the row's
+# presence is what lets the DSH client-modules node half discover this
+# package's `dsh.client` declaration and serve
+# /plugins/dsh-pet-frieren/client.js to the browser, where the client half
+# mounts the pet overlay.
 - insert:
     - id: frieren-pet
       name: 'dsh-pet-frieren'

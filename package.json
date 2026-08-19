@@ -13,9 +13,8 @@
     "lib/index.js",
     "lib/client.js",
     "cordis.patch.yml",
-    "pet.json",
-    "spritesheet.webp",
-    "assets/spritesheet.webp"
+    "assets/spritesheet.webp",
+    "assets/pet.json"
   ],
   "license": "MIT",
   "repository": {

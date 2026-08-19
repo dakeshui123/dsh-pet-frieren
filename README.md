@@ -69,9 +69,11 @@ dsh-pet-frieren/
 ├── cordis.patch.yml      inserts the plugin's own row into the web profile
 ├── lib/index.js          node half: serves the runtime assets over HTTP
 ├── lib/client.js         browser half: the pet overlay (prebuilt bundle)
-├── assets/spritesheet.webp   runtime atlas (cwebp-optimized; served by the node half)
-├── pet.json              petdex-format pet manifest
-└── spritesheet.webp      petdex v1 atlas, lossless canonical: 8×9 grid of 192×208 px frames
+├── assets/spritesheet.webp   petdex v1 atlas: 8×9 grid of 192×208 px frames
+├── assets/pet.json       petdex-format pet manifest (assets/ is the pet folder)
+├── test/client.test.js   zero-dependency smoke tests (`node --test`)
+├── README.zh.md          中文说明
+└── 使用说明.md            中文使用说明
 ```
 
 At boot, the dsh `client-modules` node half scans the profile's Loader
@@ -106,18 +108,18 @@ a normal browser-cached HTTP asset instead of being embedded in the bundle.
 
 `lib/client.js` is a hand-written bundle in the exact
 `window.__ModuleLoader__.load` shape the dsh web module system consumes, so no
-build step is needed to ship. The runtime atlas under `assets/` is generated
-from the canonical lossless `spritesheet.webp`:
+build step is needed to ship. The single sprite atlas lives in `assets/` and
+is served verbatim by the node half. Tests are zero-dependency:
 
 ```sh
-python scripts/build-assets.py   # requires cwebp on PATH
+node --test
 ```
 
 ## Pet format
 
-This repository root is also a valid [Petdex](https://petdex.dev)-format pet
+The `assets/` folder is also a valid [Petdex](https://petdex.dev)-format pet
 folder (`pet.json` + `spritesheet.webp`), so the same art can be submitted to
-the Petdex gallery (`npx petdex submit .`). Frame counts used by the
+the Petdex gallery (`npx petdex submit assets`). Frame counts used by the
 animations match the populated cells of the atlas:
 
 | row | state | frames |
@@ -143,24 +145,6 @@ personal, non-commercial fan art. See [LICENSE](./LICENSE) for the full note.
 
 <div align="center">
 
-### 中文
-
-在 **DeepSeek Harness 网页版**（`dsh --profile web`）里养一只 Q 版芙莉莲桌宠。
-它会跟随 Agent 状态：空闲发呆、运行时小跑、等待审批/提问时等待、计划评审时审阅、
-报错时扑倒（定格到错误清除）；切换会话时桌宠随之切换。空闲时会自己挥手、偶尔跳一下；
-单击挥手、双击跳跃、拖拽移动（左右拖会朝对应方向跑）、悬停出现 ✕ 可隐藏、隐藏后
-点原地小徽章恢复。
-
-**安装（一条命令）：**
-
-```sh
-dsh plugin --profile web add github:dakeshui123/dsh-pet-frieren
-```
-
-然后启动 `dsh --profile web` 即可看到芙莉莲。卸载：
-`dsh plugin --profile web remove dsh-pet-frieren`。
-
-角色版权说明：芙莉莲出自山田钟人原作、阿部司作画的《葬送的芙莉莲》，
-本仓库素材为个人非商用同人作品，详见 [LICENSE](./LICENSE)。
+**中文文档：[README.zh.md](./README.zh.md) · [使用说明](./使用说明.md)**
 
 </div>

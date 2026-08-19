@@ -4,8 +4,8 @@
  *
  * Loads the hand-written bundle into a stubbed DOM/window, then drives the
  * pet through a fake `sessions` service and synthetic pointer events,
- * asserting sprite row selection per the design spec:
- * docs/superpowers/specs/2026-08-19-agent-state-driven-pet-design.md
+ * asserting sprite row selection per the state mapping documented in
+ * README.md ("How it works").
  */
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
