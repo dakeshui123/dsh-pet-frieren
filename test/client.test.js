@@ -118,7 +118,7 @@ globalThis.document = {
 	},
 	querySelector(sel) {
 		if (sel.startsWith("style[data-plugin-css=")) {
-			const id = JSON.parse(sel.slice("style[data-plugin-css=".length));
+			const id = JSON.parse(sel.slice("style[data-plugin-css=".length, -1));
 			for (const c of this.head.children) if (c.dataset.pluginCss === id) return c;
 		}
 		return null;
@@ -167,7 +167,9 @@ function makeFakeCtx(sessions) {
 /* ── sprite row helpers ──────────────────────────────────────────────────── */
 function spriteRow(sprite) {
 	const [x, y] = sprite.style.backgroundPosition.split(" ").map((v) => parseInt(v, 10));
-	return { row: -y / DISPLAY_H, col: -x / DISPLAY_W };
+	// (0 - v) instead of -v so the idle origin yields +0, not -0:
+	// assert/strict uses Object.is, and Object.is(-0, 0) is false.
+	return { row: (0 - y) / DISPLAY_H, col: (0 - x) / DISPLAY_W };
 }
 
 /* ── test env reset (bundle module state persists across tests) ──────────── */
@@ -176,13 +178,13 @@ function spriteRow(sprite) {
 // alive. mock.timers replaces globalThis.setTimeout, so re-sync window's
 // references (captured at stub creation) after enabling.
 function resetEnv() {
-	mql.setMatches(false);
-	storage.setItem("dsh-pet-frieren:hidden", "0");
-	rafStub.reset();
 	mock.timers.reset();
 	mock.timers.enable({ apis: ["setTimeout"] });
 	window.setTimeout = globalThis.setTimeout;
 	window.clearTimeout = globalThis.clearTimeout;
+	mql.setMatches(false);
+	storage.setItem("dsh-pet-frieren:hidden", "0");
+	rafStub.reset();
 }
 
 /* ══ Task 1 tests: deriveAgentAnim ══════════════════════════════════════════ */
@@ -198,6 +200,8 @@ test("deriveAgentAnim: pendingInteraction approval → waiting", () => {
 	const plugin = loadPlugin();
 	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "approval" }, undefined).name, "waiting");
 	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "question" }, undefined).name, "waiting");
+	assert.equal(plugin.deriveAgentAnim({ running: false, pendingInteraction: "approval" }, undefined).name, "waiting");
+	assert.equal(plugin.deriveAgentAnim({ running: true, pendingInteraction: "mystery" }, undefined).name, "running");
 });
 test("deriveAgentAnim: pendingInteraction plan-review → review", () => {
 	const plugin = loadPlugin();
@@ -213,4 +217,105 @@ test("deriveAgentAnim: lastAgentError beats everything → failed, hold", () => 
 test("deriveAgentAnim: idle item → idle", () => {
 	const plugin = loadPlugin();
 	assert.equal(plugin.deriveAgentAnim({ running: false }, undefined).name, "idle");
+});
+
+/* ══ Task 2 tests: sessions-driven state machine ════════════════════════════ */
+function mountPet(sessions) {
+	const plugin = loadPlugin();
+	const ctx = makeFakeCtx(sessions);
+	plugin.apply(ctx);
+	const root = document.body.children.find((c) => c.id === "dsh-pet-frieren");
+	assert.ok(root, "pet root not mounted");
+	return { root, sprite: root.firstChild, ctx };
+}
+function setCurrent(sessions, id, item) {
+	sessions.list.set({ ids: [id], byId: { [id]: item }, current: id, phase: "ready" });
+}
+function elapse(ms) {
+	const t0 = performance.now();
+	let t = t0;
+	while (t < t0 + ms) { t += 34; rafStub.step(t); }
+}
+
+test("mount with no session → idle row 0", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { sprite } = mountPet(sessions);
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+});
+test("agent running → row 7 loop; back to idle when stopped", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running);
+	setCurrent(sessions, "s1", { id: "s1", running: false, blank: false, updatedAt: 2 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+});
+test("pendingInteraction approval → waiting; plan-review → review", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, pendingInteraction: "approval", blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.waiting);
+	setCurrent(sessions, "s1", { id: "s1", running: true, pendingInteraction: "plan-review", blank: false, updatedAt: 2 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.review);
+});
+test("lastAgentError → failed: plays once then holds last frame; clears on error reset", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const session = makeStore({ sessionId: "s1", lastAgentError: null, running: false });
+	sessions.bind("s1", session);
+	const { sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: false, blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+	session.set({ sessionId: "s1", lastAgentError: "boom", running: false });
+	elapse(2000); // failed: 8 frames @ 8fps = 1s total; well past it
+	assert.equal(spriteRow(sprite).row, ROW.failed);
+	assert.equal(spriteRow(sprite).col, 7); // held on last frame
+	elapse(1000);
+	assert.equal(spriteRow(sprite).col, 7); // still held
+	session.set({ sessionId: "s1", lastAgentError: null, running: false });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+});
+test("session switch rebinds: pet follows the new current session", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running);
+	const session2 = makeStore({ sessionId: "s2", lastAgentError: null, running: false });
+	sessions.bind("s2", session2); // bind BEFORE switching so followCurrent can subscribe
+	setCurrent(sessions, "s2", { id: "s2", running: false, blank: false, updatedAt: 2 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+	session2.set({ sessionId: "s2", lastAgentError: "oops", running: false });
+	elapse(2000);
+	assert.equal(spriteRow(sprite).row, ROW.failed);
+});
+test("click jump is an overlay: resumes agent animation (double-click shape stays valid after the click rework in Task 3)", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { root, sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running);
+	// Task 2 intermediate code: each click jumps. Task 3: first click arms the
+	// wave window, the second consumes it as a jump. Either way → jumping.
+	root.dispatch("pointerdown", { clientX: 10, clientY: 10, button: 0, pointerId: 1, preventDefault() {} });
+	root.dispatch("pointerup", { clientX: 10, clientY: 10, button: 0, pointerId: 1 });
+	root.dispatch("pointerdown", { clientX: 10, clientY: 10, button: 0, pointerId: 1, preventDefault() {} });
+	root.dispatch("pointerup", { clientX: 10, clientY: 10, button: 0, pointerId: 1 });
+	elapse(120); // jumping: 5 frames @ 14fps ≈ 357ms; mid-animation
+	assert.equal(spriteRow(sprite).row, ROW.jumping);
+	elapse(600); // past total → resumes running
+	assert.equal(spriteRow(sprite).row, ROW.running);
 });
