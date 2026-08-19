@@ -65,28 +65,34 @@ dsh-pet-frieren/
 ├── package.json          dsh.bundle.patch → cordis.patch.yml;
 │                         dsh.client { platform: "web" } → exports["./client"]
 ├── cordis.patch.yml      inserts the plugin's own row into the web profile
-├── lib/index.js          node half: empty apply (the row's presence is the point)
+├── lib/index.js          node half: serves the runtime assets over HTTP
 ├── lib/client.js         browser half: the pet overlay (prebuilt bundle)
+├── assets/spritesheet.webp   runtime atlas (cwebp-optimized; served by the node half)
 ├── pet.json              petdex-format pet manifest
-└── spritesheet.webp      petdex v1 atlas: 8×9 grid of 192×208 px frames
+└── spritesheet.webp      petdex v1 atlas, lossless canonical: 8×9 grid of 192×208 px frames
 ```
 
 At boot, the dsh `client-modules` node half scans the profile's Loader
 entries for `dsh.client` packages, serves `/plugins/dsh-pet-frieren/client.js`,
 and injects the boot graph into the page. The browser Loader then materializes
 the bundle and calls its `apply(ctx)`, which mounts the pet — a
-self-contained DOM overlay animated with `requestAnimationFrame` against the
-embedded atlas (no React, no host services, no inject edges).
+self-contained DOM overlay animated with `requestAnimationFrame` (no React,
+no host services, no inject edges).
 
-The sprite is embedded in the bundle as a base64 data URL because the plugin
-route serves the client bundle only (no generic asset route).
+Assets follow the same host-serves / client-reads pattern the dsh bundles
+use (the web-app bundle serves its frontend dist the same way): the node half
+injects the host `webServer` service and registers the
+`/dsh-plugin-assets/dsh-pet-frieren` prefix route, which serves
+`assets/spritesheet.webp` (a fixed allowlist — no path traversal surface).
+The browser half references the sprite as a plain URL in CSS, so the image is
+a normal browser-cached HTTP asset instead of being embedded in the bundle.
 
 ## Development
 
 `lib/client.js` is a hand-written bundle in the exact
 `window.__ModuleLoader__.load` shape the dsh web module system consumes, so no
-build step is needed to ship. The embedded sprite is generated from the
-canonical lossless `spritesheet.webp`:
+build step is needed to ship. The runtime atlas under `assets/` is generated
+from the canonical lossless `spritesheet.webp`:
 
 ```sh
 python scripts/build-assets.py   # requires cwebp on PATH

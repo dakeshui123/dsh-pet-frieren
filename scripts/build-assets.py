@@ -1,9 +1,13 @@
-"""Regenerate the sprite payload embedded in lib/client.js.
+"""Regenerate the runtime sprite asset served by the plugin's node half.
 
 Reads the canonical lossless atlas (spritesheet.webp at the repo root),
-lossy-re-encodes it with cwebp (q84, m6, alpha_q 90) to keep the client
-bundle small, and swaps the base64 payload into the `__DSH_PET_SPRITE_B64__`
-placeholder inside lib/client.js.
+lossy-re-encodes it with cwebp (q84, m6, alpha_q 90), and writes the result
+to assets/spritesheet.webp — the file the node half serves at
+/dsh-plugin-assets/dsh-pet-frieren/spritesheet.webp.
+
+The root spritesheet.webp stays lossless: it is the petdex-canonical pet
+asset (pet.json + spritesheet.webp), while assets/ holds the web runtime
+copy optimized for transfer size.
 
 Requirements: cwebp on PATH (https://developers.google.com/speed/webp/download)
 and Python 3.8+.
@@ -11,16 +15,13 @@ and Python 3.8+.
 Usage:  python scripts/build-assets.py
 """
 
-import base64
 import pathlib
 import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SRC = ROOT / "spritesheet.webp"
-TARGET = ROOT / "lib" / "client.js"
-TMP = ROOT / "spritesheet.embedded.webp"
-PLACEHOLDER = "__DSH_PET_SPRITE_B64__"
+TARGET = ROOT / "assets" / "spritesheet.webp"
 QUALITY = "84"
 
 
@@ -31,20 +32,11 @@ def main() -> int:
 
     cmd = [
         "cwebp", "-q", QUALITY, "-m", "6", "-alpha_q", "90",
-        str(SRC), "-o", str(TMP),
+        str(SRC), "-o", str(TARGET),
     ]
     print(" ".join(cmd))
     subprocess.run(cmd, check=True)
-
-    payload = base64.b64encode(TMP.read_bytes()).decode("ascii")
-    TMP.unlink(missing_ok=True)
-
-    text = TARGET.read_text(encoding="utf-8")
-    if PLACEHOLDER not in text:
-        print(f"error: placeholder {PLACEHOLDER} not found in {TARGET}", file=sys.stderr)
-        return 1
-    TARGET.write_text(text.replace(PLACEHOLDER, payload), encoding="utf-8")
-    print(f"embedded {len(payload)} base64 chars into {TARGET}")
+    print(f"wrote {TARGET} ({TARGET.stat().st_size} bytes)")
     return 0
 
 
