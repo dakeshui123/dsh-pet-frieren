@@ -1,7 +1,7 @@
 {
   "name": "dsh-pet-frieren",
   "description": "A chibi Frieren desktop pet for the DeepSeek Harness Web GUI: install with `dsh plugin --profile web add github:dakeshui123/dsh-pet-frieren`",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -14,7 +14,8 @@
     "lib/client.js",
     "cordis.patch.yml",
     "pet.json",
-    "spritesheet.webp"
+    "spritesheet.webp",
+    "assets/spritesheet.webp"
   ],
   "license": "MIT",
   "repository": {

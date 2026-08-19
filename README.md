@@ -5,8 +5,8 @@
 <p>A chibi <b>Frieren</b> desktop pet for the <b>DeepSeek Harness Web GUI</b>
 (<code>dsh --profile web</code>).</p>
 
-<p>Idles beside your workspace · waves on its own · jumps when clicked ·
-draggable · remembers where you left it.</p>
+<p>Idles beside your workspace · follows the Agent's state · waves on its own ·
+click to wave, double-click to jump · draggable · remembers where you left it.</p>
 
 <p>
   <a href="#install">Install</a> · <a href="#interactions">Interactions</a> ·
@@ -46,14 +46,16 @@ dsh --profile web
 
 | Action | Effect |
 | --- | --- |
-| (nothing) | Idle animation loop |
-| Wait 12–30 s | Waves at you on its own |
-| Click | Jump |
-| Drag | Move the pet (position is remembered) |
-| Double-click | Hide / show the pet |
+| (nothing) | Follows the Agent: idle loop while free; runs while working; waits on approvals/questions; reviews plan-mode plans; collapses on agent errors (holds the last failed frame until the error clears). Switching sessions switches the pet's state with it. |
+| Wait (idle only) | Waves every 12–30 s, occasionally jumps every 45–90 s |
+| Click | Wave once |
+| Double-click | Jump once |
+| Drag | Move the pet (position is remembered); running-left/right while dragged sideways |
+| Hover | A small ✕ appears in the corner — click to hide the pet |
+| Hidden | A small translucent badge stays where the pet was — click to bring it back |
 
-`prefers-reduced-motion` is respected: the pet sits still (no auto wave)
-while the OS accessibility setting is on.
+`prefers-reduced-motion` is respected: the pet shows a static frame of the
+current agent state (no auto or click animations, no drag run animation).
 
 ## How it works
 
@@ -65,28 +67,47 @@ dsh-pet-frieren/
 ├── package.json          dsh.bundle.patch → cordis.patch.yml;
 │                         dsh.client { platform: "web" } → exports["./client"]
 ├── cordis.patch.yml      inserts the plugin's own row into the web profile
-├── lib/index.js          node half: empty apply (the row's presence is the point)
+├── lib/index.js          node half: serves the runtime assets over HTTP
 ├── lib/client.js         browser half: the pet overlay (prebuilt bundle)
+├── assets/spritesheet.webp   runtime atlas (cwebp-optimized; served by the node half)
 ├── pet.json              petdex-format pet manifest
-└── spritesheet.webp      petdex v1 atlas: 8×9 grid of 192×208 px frames
+└── spritesheet.webp      petdex v1 atlas, lossless canonical: 8×9 grid of 192×208 px frames
 ```
 
 At boot, the dsh `client-modules` node half scans the profile's Loader
 entries for `dsh.client` packages, serves `/plugins/dsh-pet-frieren/client.js`,
 and injects the boot graph into the page. The browser Loader then materializes
 the bundle and calls its `apply(ctx)`, which mounts the pet — a
-self-contained DOM overlay animated with `requestAnimationFrame` against the
-embedded atlas (no React, no host services, no inject edges).
+self-contained DOM overlay animated with `requestAnimationFrame` (no React;
+one inject edge: the `sessions` service).
 
-The sprite is embedded in the bundle as a base64 data URL because the plugin
-route serves the client bundle only (no generic asset route).
+The pet reflects the Agent's state through the client runtime's `sessions`
+service: the plugin declares `inject: ["sessions"]`, subscribes to
+`sessions.list` (the current session's `running` and `pendingInteraction`),
+and to the current session's live snapshot (`lastAgentError`). The mapping:
+
+| Agent state | Sprite row |
+| --- | --- |
+| Agent error (`lastAgentError`) | failed (plays once, holds last frame) |
+| Waiting on approval / question | waiting |
+| Plan-mode plan review | review |
+| Running | running |
+| Idle (default) | idle |
+
+Assets follow the same host-serves / client-reads pattern the dsh bundles
+use (the web-app bundle serves its frontend dist the same way): the node half
+injects the host `webServer` service and registers the
+`/dsh-plugin-assets/dsh-pet-frieren` prefix route, which serves
+`assets/spritesheet.webp` (a fixed allowlist — no path traversal surface).
+The browser half references the sprite as a plain URL in CSS, so the image is
+a normal browser-cached HTTP asset instead of being embedded in the bundle.
 
 ## Development
 
 `lib/client.js` is a hand-written bundle in the exact
 `window.__ModuleLoader__.load` shape the dsh web module system consumes, so no
-build step is needed to ship. The embedded sprite is generated from the
-canonical lossless `spritesheet.webp`:
+build step is needed to ship. The runtime atlas under `assets/` is generated
+from the canonical lossless `spritesheet.webp`:
 
 ```sh
 python scripts/build-assets.py   # requires cwebp on PATH
@@ -124,8 +145,11 @@ personal, non-commercial fan art. See [LICENSE](./LICENSE) for the full note.
 
 ### 中文
 
-在 **DeepSeek Harness 网页版**（`dsh --profile web`）里养一只 Q 版芙莉莲桌宠：
-发呆循环、偶尔朝你挥手、点击会跳、可拖拽、位置会被记住。
+在 **DeepSeek Harness 网页版**（`dsh --profile web`）里养一只 Q 版芙莉莲桌宠。
+它会跟随 Agent 状态：空闲发呆、运行时小跑、等待审批/提问时等待、计划评审时审阅、
+报错时扑倒（定格到错误清除）；切换会话时桌宠随之切换。空闲时会自己挥手、偶尔跳一下；
+单击挥手、双击跳跃、拖拽移动（左右拖会朝对应方向跑）、悬停出现 ✕ 可隐藏、隐藏后
+点原地小徽章恢复。
 
 **安装（一条命令）：**
 
