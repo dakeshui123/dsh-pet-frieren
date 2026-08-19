@@ -17,6 +17,13 @@
 
 ---
 
+## 效果预览
+
+![dsh-pet-frieren 效果预览](assets/preview.png)
+
+桌宠跟随 Agent 状态——空闲、思考、执行工具调用、流式输出、等待审批、报错扑倒，
+每个状态都有对应的动画和台词气泡。
+
 ## 安装
 
 一条命令，作为标准 dsh bundle 安装到 `web` profile：
@@ -68,6 +75,7 @@ dsh-pet-frieren/
 ├── lib/client.js         浏览器半身：桌宠 overlay（预构建 bundle）
 ├── assets/spritesheet.webp   petdex v1 图集：8×9 网格、每帧 192×208 px
 ├── assets/pet.json       petdex 格式宠物清单（assets/ 即宠物文件夹）
+├── assets/preview.png    README 效果预览图
 ├── test/client.test.js   零依赖冒烟测试（`node --test`）
 ├── README.zh.md          中文说明
 └── 使用说明.md            中文使用说明

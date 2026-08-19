@@ -17,6 +17,14 @@ click to wave, double-click to jump · draggable · remembers where you left it.
 
 ---
 
+## Preview
+
+![dsh-pet-frieren preview](assets/preview.png)
+
+The pet follows the Agent's state — idle, thinking, executing tool calls,
+streaming output, waiting for approval, and collapsed on errors — each with
+its own animation and speech bubble.
+
 ## Install
 
 One command. The plugin installs into the `web` profile as a standard
@@ -72,6 +80,7 @@ dsh-pet-frieren/
 ├── lib/client.js         browser half: the pet overlay (prebuilt bundle)
 ├── assets/spritesheet.webp   petdex v1 atlas: 8×9 grid of 192×208 px frames
 ├── assets/pet.json       petdex-format pet manifest (assets/ is the pet folder)
+├── assets/preview.png    README preview render
 ├── test/client.test.js   zero-dependency smoke tests (`node --test`)
 ├── README.zh.md          中文说明
 └── 使用说明.md            中文使用说明
