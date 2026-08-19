@@ -1,6 +1,6 @@
 /**
  * Zero-dependency smoke tests for the dsh-pet-frieren client bundle.
- * Run: node --test test/
+ * Run: node --test
  *
  * Loads the hand-written bundle into a stubbed DOM/window, then drives the
  * pet through a fake `sessions` service and synthetic pointer events,
@@ -9,7 +9,6 @@
  */
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { pathToFileURL } from "node:url";
 
 /* ── bundle constants (must stay in sync with lib/client.js) ─────────────── */
 const DISPLAY_W = 168, DISPLAY_H = 182;
