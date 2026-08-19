@@ -319,3 +319,74 @@ test("click jump is an overlay: resumes agent animation (double-click shape stay
 	elapse(600); // past total → resumes running
 	assert.equal(spriteRow(sprite).row, ROW.running);
 });
+
+/* ══ Task 3 tests: interactions ═════════════════════════════════════════════ */
+const P = { clientX: 10, clientY: 10, button: 0, pointerId: 1, preventDefault() {} };
+
+test("single click → wave after 260ms window; double click → jump instead", () => {
+	resetEnv(); // enables mocked setTimeout and syncs window refs
+	const sessions = makeSessions();
+	const { root, sprite } = mountPet(sessions);
+	root.dispatch("pointerdown", P);
+	root.dispatch("pointerup", P);
+	mock.timers.tick(100); // inside window: not yet decided
+	assert.notEqual(spriteRow(sprite).row, ROW.waving);
+	mock.timers.tick(200); // window elapsed → wave fires
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.waving);
+	root.dispatch("pointerdown", P);
+	root.dispatch("pointerup", P);
+	mock.timers.tick(100);
+	root.dispatch("pointerdown", P);
+	root.dispatch("pointerup", P); // second click inside window → jump
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.jumping);
+	elapse(600); // resumes idle
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+});
+test("drag left → running-left; drag right → running-right; release resumes agent anim", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { root, sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running);
+	root.dispatch("pointerdown", { ...P, clientX: 100, clientY: 100 });
+	root.dispatch("pointermove", { ...P, clientX: 60, clientY: 100 }); // dx < -4
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.runningLeft);
+	root.dispatch("pointermove", { ...P, clientX: 180, clientY: 100 }); // dx > 4
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.runningRight);
+	root.dispatch("pointerup", { ...P, clientX: 180, clientY: 100 });
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.running); // back to agent state
+});
+test("close button hides pet and shows badge; badge click restores", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { root, sprite } = mountPet(sessions);
+	elapse(120);
+	assert.equal(spriteRow(sprite).row, ROW.idle);
+	const close = root.children.find((c) => c.className === "close");
+	assert.ok(close, "close button missing");
+	close.dispatch("click", {});
+	assert.ok(root.classList.contains("hidden"), "pet not hidden");
+	const badge = document.body.children.find((c) => c.id === "dsh-pet-frieren-badge");
+	assert.ok(badge, "badge not mounted");
+	assert.ok(!badge.classList.contains("hidden"), "badge hidden while pet hidden");
+	badge.dispatch("click", {});
+	assert.ok(!root.classList.contains("hidden"), "pet not restored");
+});
+test("reduce-motion shows a static frame of the current agent state", () => {
+	resetEnv();
+	const sessions = makeSessions();
+	const { sprite } = mountPet(sessions);
+	setCurrent(sessions, "s1", { id: "s1", running: true, blank: false, updatedAt: 1 });
+	elapse(120);
+	mql.setMatches(true);
+	assert.equal(spriteRow(sprite).row, ROW.running);
+	setCurrent(sessions, "s1", { id: "s1", running: false, blank: false, updatedAt: 2 });
+	assert.equal(spriteRow(sprite).row, ROW.idle); // static frame follows state
+	mql.setMatches(false);
+});
